@@ -1,0 +1,397 @@
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Inventory Product Scanner</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+  font-family: Arial, sans-serif;
+  background: #f3f5f7;
+  margin: 0;
+  padding: 20px;
+  color: #222;
+}
+
+.container {
+  max-width: 480px;
+  margin: auto;
+  background: white;
+  padding: 20px;
+  border-radius: 16px;
+  box-shadow: 0 3px 15px #00000012;
+}
+
+h2 {
+  text-align: center;
+  margin-top: 5px;
+}
+
+input, button {
+  width: 100%;
+  padding: 14px;
+  margin: 9px 0;
+  border-radius: 9px;
+  font-size: 16px;
+}
+
+input {
+  border: 1px solid #ccc;
+  background: white;
+}
+
+button {
+  border: 0;
+  background: #e91e63;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: .5;
+}
+
+.secondary {
+  background: #444;
+}
+
+#video {
+  width: 100%;
+  display: none;
+  margin-top: 12px;
+  border-radius: 12px;
+  background: black;
+}
+
+#preview {
+  display: none;
+  max-width: 200px;
+  max-height: 200px;
+  object-fit: contain;
+  margin: 15px auto;
+}
+
+#status {
+  text-align: center;
+  font-weight: bold;
+  line-height: 1.7;
+  margin-top: 12px;
+  overflow-wrap: anywhere;
+}
+
+.note {
+  font-size: 12px;
+  color: #777;
+  text-align: center;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>Inventory Product Scanner</h2>
+
+<p class="note">مسح الباركود ورفع صور المنتجات</p>
+
+<label>رمز الدخول</label>
+<input
+  id="pin"
+  type="password"
+  inputmode="numeric"
+  placeholder="أدخل رمز الحماية"
+  autocomplete="off"
+>
+
+<label>الباركود</label>
+<input
+  id="barcode"
+  type="text"
+  placeholder="سيظهر الباركود هنا"
+  readonly
+>
+
+<button id="scanBtn" type="button">
+  📷 مسح الباركود بالكاميرا
+</button>
+
+<video id="video" autoplay playsinline muted></video>
+
+<button
+  id="stopBtn"
+  class="secondary"
+  type="button"
+  style="display:none"
+>
+  إيقاف الكاميرا
+</button>
+
+<label>اسم المنتج (اختياري)</label>
+<input
+  id="productName"
+  type="text"
+  placeholder="اسم المنتج"
+>
+
+<label>صورة المنتج</label>
+<input
+  id="photo"
+  type="file"
+  accept="image/jpeg,image/png,image/webp"
+>
+
+<img id="preview" alt="معاينة المنتج">
+
+<button id="uploadBtn" type="button">
+  رفع الصورة وحفظ المنتج
+</button>
+
+<div id="status"></div>
+
+</div>
+
+<script type="module">
+
+import {
+  BrowserMultiFormatReader
+} from 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/+esm';
+
+const CLOUD_NAME = 'mzyzuiws';
+const UPLOAD_PRESET = 'products_mobile';
+
+const GAS_URL =
+'https://script.google.com/a/macros/hungerstation.com/s/AKfycbyWPsX1GE7uSye2aROl1Dm3BCeJN-jd-2qca9FL2uDT4A9fyZ31imb3Mlt-8p8lWPYw-A/exec';
+
+const $ = id => document.getElementById(id);
+
+const video = $('video');
+const statusBox = $('status');
+
+let scannerControls = null;
+let scannerReader = null;
+let isScanning = false;
+
+function setStatus(message) {
+  statusBox.textContent = message;
+}
+
+// -----------------------------
+// Barcode scanner
+// -----------------------------
+
+async function startScanner() {
+
+  try {
+
+    if (!navigator.mediaDevices ||
+        !navigator.mediaDevices.getUserMedia) {
+      throw new Error('المتصفح لا يدعم تشغيل الكاميرا');
+    }
+
+    if (isScanning) return;
+
+    isScanning = true;
+
+    video.style.display = 'block';
+    $('stopBtn').style.display = 'block';
+
+    setStatus('جاري تشغيل الكاميرا...');
+
+    scannerReader = new BrowserMultiFormatReader();
+
+    scannerControls =
+      await scannerReader.decodeFromVideoDevice(
+        undefined,
+        video,
+        (result, error) => {
+
+          if (result && isScanning) {
+
+            $('barcode').value = result.getText();
+
+            setStatus('تمت قراءة الباركود بنجاح ✓');
+
+            stopScanner();
+
+          }
+
+        }
+      );
+
+    setStatus('وجّه الكاميرا إلى الباركود');
+
+  } catch (error) {
+
+    setStatus('خطأ في الكاميرا: ' + error.message);
+
+    stopScanner();
+
+  }
+
+}
+
+function stopScanner() {
+
+  isScanning = false;
+
+  if (scannerControls) {
+    scannerControls.stop();
+    scannerControls = null;
+  }
+
+  if (video.srcObject) {
+    video.srcObject.getTracks().forEach(track => {
+      track.stop();
+    });
+  }
+
+  video.pause();
+  video.srcObject = null;
+  video.style.display = 'none';
+
+  $('stopBtn').style.display = 'none';
+
+}
+
+$('scanBtn').addEventListener('click', startScanner);
+$('stopBtn').addEventListener('click', stopScanner);
+
+// -----------------------------
+// Image preview
+// -----------------------------
+
+$('photo').addEventListener('change', () => {
+
+  const file = $('photo').files[0];
+
+  if (!file) return;
+
+  $('preview').src = URL.createObjectURL(file);
+  $('preview').style.display = 'block';
+
+});
+
+// -----------------------------
+// Upload image to Cloudinary
+// -----------------------------
+
+async function uploadProduct() {
+
+  const pin = $('pin').value.trim();
+  const barcode = $('barcode').value.trim();
+  const productName = $('productName').value.trim();
+  const file = $('photo').files[0];
+
+  if (!pin) {
+    setStatus('أدخل رمز الحماية أولاً');
+    return;
+  }
+
+  if (!barcode) {
+    setStatus('امسح الباركود أولاً');
+    return;
+  }
+
+  if (!file) {
+    setStatus('اختر صورة المنتج أولاً');
+    return;
+  }
+
+  const allowed = [
+    'image/jpeg',
+    'image/png',
+    'image/webp'
+  ];
+
+  if (!allowed.includes(file.type)) {
+    setStatus('صيغة الصورة غير مدعومة');
+    return;
+  }
+
+  if (file.size > 8 * 1024 * 1024) {
+    setStatus('حجم الصورة أكبر من 8 ميجابايت');
+    return;
+  }
+
+  $('uploadBtn').disabled = true;
+
+  try {
+
+    setStatus('جاري رفع الصورة إلى Cloudinary...');
+
+    const formData = new FormData();
+
+    formData.append('file', file);
+    formData.append('upload_preset', UPLOAD_PRESET);
+
+    const uploadResponse = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
+      {
+        method: 'POST',
+        body: formData
+      }
+    );
+
+    const imageData = await uploadResponse.json();
+
+    if (!uploadResponse.ok || !imageData.secure_url) {
+      throw new Error(
+        imageData.error?.message || 'فشل رفع الصورة'
+      );
+    }
+
+    setStatus('تم رفع الصورة. جاري إرسال بيانات المنتج...');
+
+    const form = new URLSearchParams();
+
+    form.append('pin', pin);
+    form.append('barcode', barcode);
+    form.append('productName', productName);
+    form.append('imageUrl', imageData.secure_url);
+    form.append('publicId', imageData.public_id);
+
+    // no-cors allows a simple cross-origin form POST.
+    // The response cannot be read by this page.
+    await fetch(GAS_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      body: form
+    });
+
+    setStatus(
+      'تم إرسال البيانات إلى Google Sheets. ' +
+      'افتح الجدول للتأكد من ظهور الصنف.'
+    );
+
+    $('barcode').value = '';
+    $('productName').value = '';
+    $('photo').value = '';
+
+    $('preview').src = '';
+    $('preview').style.display = 'none';
+
+  } catch (error) {
+
+    setStatus('حدث خطأ: ' + error.message);
+
+  } finally {
+
+    $('uploadBtn').disabled = false;
+
+  }
+
+}
+
+$('uploadBtn').addEventListener('click', uploadProduct);
+
+</script>
+
+</body>
+</html>
